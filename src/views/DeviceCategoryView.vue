@@ -97,17 +97,27 @@ const meta = computed(() => CATEGORY_META[props.category])
           class="mb-4 rounded-lg border border-amber-400/20 bg-amber-400/5 p-3"
         >
           <p class="mb-2 text-xs text-text-dim">
-            Test d'écriture expérimental : renvoie exactement les octets lus au dernier GET_LEDPARAM — ne devrait
-            rien changer visuellement sur le clavier si l'hypothèse de format est correcte. Regarde le clavier en cliquant.
+            Un bug dans le test précédent a coupé le RGB (décalage d'octet dans la reconstruction de la trame,
+            corrigé). Restaure l'état d'origine lu au tout premier GET_LEDPARAM, ou relance un test d'écriture propre.
           </p>
-          <button
-            type="button"
-            class="accent-ring rounded-lg border border-amber-400/30 px-3 py-1.5 text-xs text-amber-200 transition-colors hover:bg-amber-400/10 disabled:opacity-50"
-            :disabled="store.testingAkkoWrite"
-            @click="store.testAkkoRoundTrip()"
-          >
-            {{ store.testingAkkoWrite ? 'Envoi…' : "Tester l'écriture (renvoi à l'identique)" }}
-          </button>
+          <div class="flex flex-wrap gap-2">
+            <button
+              type="button"
+              class="accent-ring rounded-lg border border-emerald-400/30 px-3 py-1.5 text-xs text-emerald-200 transition-colors hover:bg-emerald-400/10 disabled:opacity-50"
+              :disabled="store.testingAkkoWrite"
+              @click="store.restoreAkkoLighting()"
+            >
+              {{ store.testingAkkoWrite ? 'Envoi…' : "Restaurer l'éclairage d'origine" }}
+            </button>
+            <button
+              type="button"
+              class="accent-ring rounded-lg border border-amber-400/30 px-3 py-1.5 text-xs text-amber-200 transition-colors hover:bg-amber-400/10 disabled:opacity-50"
+              :disabled="store.testingAkkoWrite"
+              @click="store.testAkkoRoundTrip()"
+            >
+              {{ store.testingAkkoWrite ? 'Envoi…' : "Tester l'écriture (renvoi à l'identique, corrigé)" }}
+            </button>
+          </div>
           <div v-if="store.akkoWriteTestResult?.length" class="mt-2 space-y-1">
             <p v-for="(line, i) in store.akkoWriteTestResult" :key="i" class="font-mono text-xs text-text-dim">
               {{ line }}

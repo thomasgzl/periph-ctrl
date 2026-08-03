@@ -1,6 +1,11 @@
 import { defineStore } from 'pinia'
 import { createAkkoKeyboardSettings } from '@/services/hid/akkoSettings'
-import { AKKO_VENDOR_ID, connectAndProbeAkko, testLedRoundTrip } from '@/services/hid/webhid/akko'
+import {
+  AKKO_VENDOR_ID,
+  connectAndProbeAkko,
+  restoreKnownTac75Lighting,
+  testLedRoundTrip,
+} from '@/services/hid/webhid/akko'
 import { getActiveDriver, type DeviceSetting, type PeripheralDevice } from '@/services/hid'
 
 interface State {
@@ -124,6 +129,15 @@ export const useDeviceStore = defineStore('devices', {
       this.testingAkkoWrite = true
       try {
         this.akkoWriteTestResult = await testLedRoundTrip()
+      } finally {
+        this.testingAkkoWrite = false
+      }
+    },
+    /** Recovery from the shift-bug that turned the RGB off during the first write test. */
+    async restoreAkkoLighting() {
+      this.testingAkkoWrite = true
+      try {
+        this.akkoWriteTestResult = await restoreKnownTac75Lighting()
       } finally {
         this.testingAkkoWrite = false
       }

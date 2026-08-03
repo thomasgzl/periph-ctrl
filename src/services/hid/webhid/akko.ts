@@ -182,30 +182,61 @@ export async function connectAndProbeAkko(): Promise<AkkoProbeResult | null> {
  * found, so anything beyond this round-trip needs visual confirmation
  * from the user watching their actual keyboard.
  */
-export async function testLedRoundTrip(): Promise<string[]> {
+async function sendSetLedParam(device: HIDDevice, sourceBytes: number[]): Promise<string[]> {
   const diagnostics: string[] = []
-  if (!activeDevice || !lastLedParamBytes) {
-    diagnostics.push("Aucune lecture GET_LEDPARAM en mémoire — reconnecte le clavier d'abord.")
-    return diagnostics
-  }
 
+  // In-place opcode swap only: keep every byte at its original position
+  // (positions 1..63 untouched, including the payload past the checksum),
+  // just replace the leading opcode and recompute the checksum over
+  // [cmd, ...5 params]. A previous version of this function shifted the
+  // whole buffer left by one instead, which silently corrupted the mode
+  // byte and clobbered a payload byte with the checksum — that's what
+  // turned the RGB off during the first test.
   const data = new Uint8Array(64)
-  data.set(lastLedParamBytes.slice(1, 64), 0)
+  data.set(sourceBytes.slice(0, 64), 0)
   data[0] = SET_LEDPARAM
   let sum = 0
   for (let i = 0; i < 6; i++) sum = (sum + data[i]) & 0xff
   data[6] = (255 - sum) & 0xff
 
-  diagnostics.push(`Envoi SET_LEDPARAM (renvoi à l'identique) : ${Array.from(data.slice(0, 16)).map((b) => toHex(b)).join(' ')}`)
+  diagnostics.push(`Envoi SET_LEDPARAM : ${Array.from(data.slice(0, 16)).map((b) => toHex(b)).join(' ')}`)
 
   try {
-    await activeDevice.sendFeatureReport(0, data)
+    await device.sendFeatureReport(0, data)
     diagnostics.push('Écriture acceptée par le device (aucune erreur levée).')
-    const response = await activeDevice.receiveFeatureReport(0)
+    const response = await device.receiveFeatureReport(0)
     diagnostics.push(`Relecture après écriture : ${bytesToHex(response)}`)
   } catch (error) {
     diagnostics.push(`Échec de l'écriture : ${error instanceof Error ? error.message : String(error)}`)
   }
 
   return diagnostics
+}
+
+/**
+ * Mirrors the last GET_LEDPARAM response back as a SET_LEDPARAM request
+ * (opcode swapped, every other byte — including payload — left exactly as
+ * read). Should be a visual no-op if the frame-shape guess holds.
+ */
+export async function testLedRoundTrip(): Promise<string[]> {
+  if (!activeDevice || !lastLedParamBytes) {
+    return ["Aucune lecture GET_LEDPARAM en mémoire — reconnecte le clavier d'abord."]
+  }
+  return sendSetLedParam(activeDevice, lastLedParamBytes)
+}
+
+// Bytes from the very first successful GET_LEDPARAM read on this exact
+// keyboard (2026-08-03), before the shift-bug test corrupted its state —
+// hardcoded so we can restore it even after a page reload wipes the
+// in-memory `lastLedParamBytes`.
+const KNOWN_TAC75_LEDPARAM_BEFORE_BUG = [
+  0x87, 0x02, 0x01, 0x04, 0x08, 0x80, 0x00, 0xff, 0, 0, 0, 0, 0, 0, 0, 0,
+]
+
+/** One-off recovery: restores the exact lighting state read before the round-trip bug. */
+export async function restoreKnownTac75Lighting(): Promise<string[]> {
+  if (!activeDevice) {
+    return ["Aucun clavier connecté — clique d'abord \"Connecter un clavier réel\"."]
+  }
+  return sendSetLedParam(activeDevice, KNOWN_TAC75_LEDPARAM_BEFORE_BUG)
 }
