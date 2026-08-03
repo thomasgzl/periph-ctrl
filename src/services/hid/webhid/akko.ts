@@ -3,14 +3,19 @@
  * controller). Protocol reverse-engineered by the monsgeek-akko-linux
  * project: https://github.com/echtzeit-solutions/monsgeek-akko-linux
  *
- * The exact PID for the Akko TAC75 HE isn't in that project's confirmed
- * device list (only other Akko/MonsGeek HE models are), so this only
- * probes the device (a read-only GET_LEDPARAM call) and reports the raw
- * response — no SET/write command is sent until that's verified against
- * a real capture.
+ * Confirmed against Akko's own official web configurator (web.akkogear.com,
+ * itself WebHID-based): its internal device registry lists PID 0x502d as
+ * "TAC75 HE" (name "ry5088_akko_tac75he_8k_dm"), and its per-device
+ * connection config targets usagePage 0xFFFF / usage 0x02 / interface 2 —
+ * NOT usage 0x01, which is a separate, input-only monitoring collection on
+ * the same vendor page (that's the one an unfiltered vendorId-only request
+ * grabbed on the first attempt, and it has no output/feature reports at
+ * all, hence the earlier "Failed to write" errors).
  */
 
 export const AKKO_VENDOR_ID = 0x3151
+const CONFIG_USAGE_PAGE = 0xffff
+const CONFIG_USAGE = 0x02
 
 // From monsgeek-akko-linux's docs/PROTOCOL.md device table — used only to
 // tell the user "this PID is a confirmed model" in the diagnostics, not to
@@ -21,11 +26,10 @@ const KNOWN_PRODUCT_IDS: Record<number, string> = {
   0x5038: 'M1 V5 HE TMR 2.4GHz dongle',
   0x5027: 'M1 V5 HE Bluetooth',
   0x5029: 'TITAN68HE (wired)',
-  0x502d: 'X65HE (wired)',
+  0x502d: 'TAC75 HE / X65HE (même PCB RY5088, confirmé via web.akkogear.com)',
 }
 
 const GET_LEDPARAM = 0x87
-const VENDOR_USAGE_PAGE = 0xffff
 
 function toHex(value: number, width = 2): string {
   return value.toString(16).padStart(width, '0')
@@ -91,7 +95,7 @@ export interface AkkoProbeResult {
  */
 export async function connectAndProbeAkko(): Promise<AkkoProbeResult | null> {
   const devices = await navigator.hid.requestDevice({
-    filters: [{ vendorId: AKKO_VENDOR_ID }],
+    filters: [{ vendorId: AKKO_VENDOR_ID, usagePage: CONFIG_USAGE_PAGE, usage: CONFIG_USAGE }],
   })
   const device = devices[0]
   if (!device) return null
@@ -119,11 +123,16 @@ export async function connectAndProbeAkko(): Promise<AkkoProbeResult | null> {
     )
   }
 
-  const vendorCollection = device.collections.find((c) => c.usagePage === VENDOR_USAGE_PAGE)
-  if (!vendorCollection) {
-    diagnostics.push("Aucune interface vendor 0xFFFF trouvée sur ce device — protocole probablement différent.")
+  const configCollection = device.collections.find(
+    (c) => c.usagePage === CONFIG_USAGE_PAGE && c.usage === CONFIG_USAGE,
+  )
+  if (!configCollection) {
+    diagnostics.push(
+      "Collection de config (usagePage 0xFFFF / usage 0x02) introuvable sur ce device — le sélecteur du navigateur a peut-être renvoyé une autre interface.",
+    )
     return { vendorId: device.vendorId, productId: device.productId, productName: device.productName, diagnostics }
   }
+  diagnostics.push('Collection de config (usage 0x02) trouvée — bonne interface cette fois.')
 
   const report = buildFeatureReport(GET_LEDPARAM)
 
