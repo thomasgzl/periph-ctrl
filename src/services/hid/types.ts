@@ -43,6 +43,17 @@ export interface ToggleSetting extends SettingBase {
 
 export type DeviceSetting = RangeSetting | ColorSetting | EnumSetting | ToggleSetting
 
+/**
+ * How far real (non-mock) control actually goes for this device, given what's
+ * publicly reverse-engineered for its protocol:
+ * - 'full': settings can be read and written.
+ * - 'read-only': only status (e.g. battery) is confirmed reverse-engineered;
+ *   settings are shown but can't be written yet.
+ * - 'unsupported': device is detected, but nothing about its protocol is
+ *   confirmed for this exact model yet.
+ */
+export type SupportLevel = 'full' | 'read-only' | 'unsupported'
+
 export interface PeripheralDevice {
   id: string
   name: string
@@ -53,6 +64,8 @@ export interface PeripheralDevice {
   batteryPercent?: number
   firmwareVersion?: string
   settings: DeviceSetting[]
+  supportLevel: SupportLevel
+  supportNote?: string
 }
 
 /**

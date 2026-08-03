@@ -44,7 +44,7 @@ export const useDeviceStore = defineStore('devices', {
     async updateSetting(deviceId: string, settingId: string, value: DeviceSetting['value']) {
       const device = this.devices.find((d) => d.id === deviceId)
       const setting = device?.settings.find((s) => s.id === settingId)
-      if (!device || !setting) return
+      if (!device || !setting || device.supportLevel !== 'full') return
 
       const previous = setting.value
       setting.value = value

@@ -4,6 +4,7 @@ import { RouterLink } from 'vue-router'
 import Icon from '@/components/Icon.vue'
 import ConnectionBadge from '@/components/device/ConnectionBadge.vue'
 import SettingControl from '@/components/device/SettingControl.vue'
+import SupportBadge from '@/components/device/SupportBadge.vue'
 import { useStaggerReveal } from '@/composables/animations'
 import { CATEGORY_META } from '@/constants/categories'
 import { useDeviceStore } from '@/stores/devices'
@@ -50,8 +51,18 @@ const meta = computed(() => CATEGORY_META[props.category])
             <p class="text-sm text-text-dim">{{ device.brand }}</p>
             <h2 class="text-lg font-medium text-text-h">{{ device.name }}</h2>
           </div>
-          <ConnectionBadge :device="device" />
+          <div class="flex flex-wrap items-center gap-2">
+            <ConnectionBadge :device="device" />
+            <SupportBadge :level="device.supportLevel" />
+          </div>
         </div>
+
+        <p
+          v-if="device.supportNote"
+          class="mb-4 rounded-lg border border-white/10 bg-white/[0.03] p-3 text-xs text-text-dim"
+        >
+          {{ device.supportNote }}
+        </p>
 
         <div>
           <SettingControl
@@ -59,6 +70,7 @@ const meta = computed(() => CATEGORY_META[props.category])
             :key="setting.id"
             :device-id="device.id"
             :setting="setting"
+            :disabled="device.supportLevel !== 'full'"
           />
         </div>
       </section>

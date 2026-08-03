@@ -5,7 +5,7 @@ import { pulseSaved } from '@/composables/animations'
 import { useDeviceStore } from '@/stores/devices'
 import type { DeviceSetting, RgbEffect } from '@/services/hid'
 
-const props = defineProps<{ deviceId: string; setting: DeviceSetting }>()
+const props = defineProps<{ deviceId: string; setting: DeviceSetting; disabled?: boolean }>()
 
 const store = useDeviceStore()
 const checkEl = ref<HTMLElement | null>(null)
@@ -69,7 +69,7 @@ watch(
 </script>
 
 <template>
-  <div class="flex flex-col gap-2 border-b border-white/5 py-4 last:border-0">
+  <div class="flex flex-col gap-2 border-b border-white/5 py-4 last:border-0" :class="{ 'opacity-40': disabled }">
     <div class="flex items-center justify-between gap-3">
       <div>
         <p class="text-sm font-medium text-text-h">{{ setting.label }}</p>
@@ -88,7 +88,9 @@ watch(
     <div v-if="setting.kind === 'range'" class="flex items-center gap-3">
       <input
         type="range"
-        class="accent-ring h-1.5 flex-1 cursor-pointer appearance-none rounded-full bg-white/10 accent-accent"
+        class="accent-ring h-1.5 flex-1 appearance-none rounded-full bg-white/10 accent-accent disabled:cursor-not-allowed"
+        :class="disabled ? 'cursor-not-allowed' : 'cursor-pointer'"
+        :disabled="disabled"
         :min="setting.min"
         :max="setting.max"
         :step="setting.step"
@@ -104,7 +106,9 @@ watch(
     <div v-else-if="setting.kind === 'color'" class="flex flex-wrap items-center gap-3">
       <input
         type="color"
-        class="accent-ring size-9 cursor-pointer rounded-lg border border-white/10 bg-transparent p-0"
+        class="accent-ring size-9 rounded-lg border border-white/10 bg-transparent p-0"
+        :class="disabled ? 'cursor-not-allowed' : 'cursor-pointer'"
+        :disabled="disabled"
         :value="setting.value"
         @input="onColorInput"
       />
@@ -113,7 +117,8 @@ watch(
           v-for="opt in EFFECT_OPTIONS"
           :key="opt.value"
           type="button"
-          class="accent-ring rounded-full border px-2.5 py-1 text-xs transition-colors"
+          :disabled="disabled"
+          class="accent-ring rounded-full border px-2.5 py-1 text-xs transition-colors disabled:cursor-not-allowed"
           :class="setting.effect === opt.value
             ? 'border-accent/60 bg-accent/15 text-text-h'
             : 'border-white/10 text-text-dim hover:border-white/20'"
@@ -130,7 +135,8 @@ watch(
         v-for="opt in setting.options"
         :key="opt.value"
         type="button"
-        class="accent-ring rounded-full border px-3 py-1.5 text-xs transition-colors"
+        :disabled="disabled"
+        class="accent-ring rounded-full border px-3 py-1.5 text-xs transition-colors disabled:cursor-not-allowed"
         :class="setting.value === opt.value
           ? 'border-accent/60 bg-accent/15 text-text-h'
           : 'border-white/10 text-text-dim hover:border-white/20'"
@@ -144,7 +150,8 @@ watch(
     <button
       v-else-if="setting.kind === 'toggle'"
       type="button"
-      class="accent-ring flex w-11 items-center rounded-full p-0.5 transition-colors"
+      :disabled="disabled"
+      class="accent-ring flex w-11 items-center rounded-full p-0.5 transition-colors disabled:cursor-not-allowed"
       :class="setting.value ? 'bg-accent' : 'bg-white/10'"
       @click="onToggle"
     >

@@ -2,6 +2,7 @@
 import { RouterLink } from 'vue-router'
 import Icon from '@/components/Icon.vue'
 import ConnectionBadge from '@/components/device/ConnectionBadge.vue'
+import SupportBadge from '@/components/device/SupportBadge.vue'
 import { CATEGORY_META } from '@/constants/categories'
 import type { PeripheralDevice } from '@/services/hid'
 
@@ -25,6 +26,9 @@ defineProps<{ device: PeripheralDevice }>()
       </div>
     </div>
 
-    <ConnectionBadge :device="device" />
+    <div class="flex flex-wrap items-center gap-2">
+      <ConnectionBadge :device="device" />
+      <SupportBadge v-if="device.supportLevel !== 'full'" :level="device.supportLevel" />
+    </div>
   </RouterLink>
 </template>
