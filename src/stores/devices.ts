@@ -1,4 +1,6 @@
 import { defineStore } from 'pinia'
+import { createAkkoKeyboardSettings } from '@/services/hid/akkoSettings'
+import { AKKO_VENDOR_ID, connectAndProbeAkko } from '@/services/hid/webhid/akko'
 import { getActiveDriver, type DeviceSetting, type PeripheralDevice } from '@/services/hid'
 
 interface State {
@@ -7,6 +9,8 @@ interface State {
   hasScanned: boolean
   savingSettingIds: Set<string>
   lastSavedSettingId: string | null
+  connectingKeyboard: boolean
+  keyboardConnectError: string | null
 }
 
 const driver = getActiveDriver()
@@ -22,6 +26,8 @@ export const useDeviceStore = defineStore('devices', {
     hasScanned: false,
     savingSettingIds: new Set(),
     lastSavedSettingId: null,
+    connectingKeyboard: false,
+    keyboardConnectError: null,
   }),
   getters: {
     byCategory: (state) => (category: PeripheralDevice['category']) =>
@@ -59,6 +65,49 @@ export const useDeviceStore = defineStore('devices', {
         throw error
       } finally {
         this.savingSettingIds.delete(key)
+      }
+    },
+    /**
+     * Opens the real browser HID device picker (must run from a click
+     * handler — WebHID requires user activation) and replaces whatever
+     * keyboard entry is currently shown with the real connected device.
+     */
+    async connectKeyboard() {
+      if (!('hid' in navigator)) {
+        this.keyboardConnectError = 'WebHID indisponible : utilise Chrome ou Edge sur ordinateur.'
+        return
+      }
+
+      this.connectingKeyboard = true
+      this.keyboardConnectError = null
+      try {
+        const result = await connectAndProbeAkko()
+        if (!result) return // user cancelled the device picker
+
+        const isAkko = result.vendorId === AKKO_VENDOR_ID
+        const device: PeripheralDevice = {
+          id: `keyboard-real-${result.vendorId}-${result.productId}`,
+          name: result.productName || 'Clavier détecté',
+          brand: isAkko ? 'Akko / MonsGeek' : 'Marque inconnue',
+          category: 'keyboard',
+          connection: 'usb',
+          connected: true,
+          vendorId: result.vendorId,
+          productId: result.productId,
+          supportLevel: 'unsupported',
+          supportNote: isAkko
+            ? "Vendor reconnu (Akko/MonsGeek, contrôleur RY5088) mais ce PID précis n'est pas confirmé dans la doc communautaire — voir le diagnostic ci-dessous avant d'activer l'écriture."
+            : "Vendor non reconnu par Periph Ctrl — aucun pilote disponible pour ce périphérique pour l'instant.",
+          diagnostics: result.diagnostics,
+          settings: isAkko ? createAkkoKeyboardSettings() : [],
+        }
+
+        this.devices = [...this.devices.filter((d) => d.category !== 'keyboard'), device]
+        this.hasScanned = true
+      } catch (error) {
+        this.keyboardConnectError = error instanceof Error ? error.message : String(error)
+      } finally {
+        this.connectingKeyboard = false
       }
     },
   },

@@ -29,12 +29,32 @@ const meta = computed(() => CATEGORY_META[props.category])
   <div>
     <RouterLink to="/" class="mb-4 inline-block text-sm text-text-dim hover:text-text-h">← Dashboard</RouterLink>
 
-    <header class="mb-6 flex items-center gap-3">
-      <span class="flex size-10 items-center justify-center rounded-xl bg-white/5 text-xl text-accent-2">
-        <Icon :name="meta.icon" />
-      </span>
-      <h1 class="text-2xl font-semibold">{{ meta.label }}</h1>
+    <header class="mb-6 flex flex-wrap items-center justify-between gap-4">
+      <div class="flex items-center gap-3">
+        <span class="flex size-10 items-center justify-center rounded-xl bg-white/5 text-xl text-accent-2">
+          <Icon :name="meta.icon" />
+        </span>
+        <h1 class="text-2xl font-semibold">{{ meta.label }}</h1>
+      </div>
+
+      <button
+        v-if="category === 'keyboard'"
+        type="button"
+        class="accent-ring glass-panel flex items-center gap-2 px-4 py-2 text-sm text-text-h transition-colors hover:border-accent/40 disabled:opacity-50"
+        :disabled="store.connectingKeyboard"
+        @click="store.connectKeyboard()"
+      >
+        <Icon name="refresh" :class="{ 'animate-spin': store.connectingKeyboard }" />
+        {{ store.connectingKeyboard ? 'Connexion…' : 'Connecter un clavier réel (WebHID)' }}
+      </button>
     </header>
+
+    <p
+      v-if="category === 'keyboard' && store.keyboardConnectError"
+      class="mb-6 rounded-lg border border-red-400/30 bg-red-400/10 p-3 text-sm text-red-300"
+    >
+      {{ store.keyboardConnectError }}
+    </p>
 
     <div v-if="store.scanning && devices.length === 0" class="py-16 text-center text-sm text-text-dim">
       Détection en cours…
@@ -63,6 +83,13 @@ const meta = computed(() => CATEGORY_META[props.category])
         >
           {{ device.supportNote }}
         </p>
+
+        <div v-if="device.diagnostics?.length" class="mb-4 rounded-lg border border-white/10 bg-black/30 p-3">
+          <p class="mb-1.5 text-xs font-medium text-text-h">Diagnostic de connexion</p>
+          <p v-for="(line, i) in device.diagnostics" :key="i" class="font-mono text-xs text-text-dim">
+            {{ line }}
+          </p>
+        </div>
 
         <div>
           <SettingControl

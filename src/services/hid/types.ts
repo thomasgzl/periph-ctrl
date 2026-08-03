@@ -66,6 +66,11 @@ export interface PeripheralDevice {
   settings: DeviceSetting[]
   supportLevel: SupportLevel
   supportNote?: string
+  /** Real USB identifiers, present once the device was picked via a real WebHID connection. */
+  vendorId?: number
+  productId?: number
+  /** Raw protocol probe output shown to the user while a real driver is unverified. */
+  diagnostics?: string[]
 }
 
 /**
