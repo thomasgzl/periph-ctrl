@@ -1,16 +1,22 @@
 // Minimal WebHID typings (not yet in TypeScript's lib.dom.d.ts).
 // Covers only what this project uses. Spec: https://wicg.github.io/webhid/
 
-interface HIDReportInfo {
+interface HIDReportItem {
   reportId?: number
 }
 
 interface HIDCollectionInfo {
   usagePage?: number
   usage?: number
-  inputReports?: HIDReportInfo[]
-  outputReports?: HIDReportInfo[]
-  featureReports?: HIDReportInfo[]
+  inputReports?: HIDReportItem[]
+  outputReports?: HIDReportItem[]
+  featureReports?: HIDReportItem[]
+}
+
+interface HIDInputReportEvent extends Event {
+  readonly device: HIDDevice
+  readonly reportId: number
+  readonly data: DataView
 }
 
 interface HIDDevice extends EventTarget {
@@ -24,6 +30,8 @@ interface HIDDevice extends EventTarget {
   sendReport(reportId: number, data: Uint8Array): Promise<void>
   sendFeatureReport(reportId: number, data: Uint8Array): Promise<void>
   receiveFeatureReport(reportId: number): Promise<DataView>
+  addEventListener(type: 'inputreport', listener: (event: HIDInputReportEvent) => void): void
+  removeEventListener(type: 'inputreport', listener: (event: HIDInputReportEvent) => void): void
 }
 
 interface HIDDeviceFilter {

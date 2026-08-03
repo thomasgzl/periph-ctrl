@@ -12,6 +12,18 @@
 
 export const AKKO_VENDOR_ID = 0x3151
 
+// From monsgeek-akko-linux's docs/PROTOCOL.md device table — used only to
+// tell the user "this PID is a confirmed model" in the diagnostics, not to
+// change behavior.
+const KNOWN_PRODUCT_IDS: Record<number, string> = {
+  0x5030: 'M1 V5 HE USB (wired)',
+  0x503a: 'M1 V5 HE 2.4GHz dongle',
+  0x5038: 'M1 V5 HE TMR 2.4GHz dongle',
+  0x5027: 'M1 V5 HE Bluetooth',
+  0x5029: 'TITAN68HE (wired)',
+  0x502d: 'X65HE (wired)',
+}
+
 const GET_LEDPARAM = 0x87
 const VENDOR_USAGE_PAGE = 0xffff
 
@@ -27,6 +39,41 @@ function buildFeatureReport(cmd: number, params: number[] = []): Uint8Array {
   for (let i = 0; i < 6; i++) sum = (sum + data[i]) & 0xff
   data[6] = (255 - sum) & 0xff
   return data
+}
+
+function describeReports(label: string, reports?: HIDReportItem[]): string {
+  if (!reports || reports.length === 0) return `${label}: aucun`
+  const ids = reports.map((r) => `0x${toHex(r.reportId ?? 0)}`).join(', ')
+  return `${label}: ${ids}`
+}
+
+function bytesToHex(view: DataView, max = 16): string {
+  const bytes: string[] = []
+  for (let i = 0; i < Math.min(view.byteLength, max); i++) bytes.push(toHex(view.getUint8(i)))
+  return bytes.join(' ')
+}
+
+/** Waits for one 'inputreport' event after sending an output report, with a timeout. */
+function sendOutputReportAndWait(device: HIDDevice, reportId: number, data: Uint8Array, timeoutMs = 800): Promise<DataView> {
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      device.removeEventListener('inputreport', handler)
+      reject(new Error(`Timeout (${timeoutMs}ms) : aucun input report reçu en retour`))
+    }, timeoutMs)
+
+    function handler(event: HIDInputReportEvent) {
+      clearTimeout(timeout)
+      device.removeEventListener('inputreport', handler)
+      resolve(event.data)
+    }
+
+    device.addEventListener('inputreport', handler)
+    device.sendReport(reportId, data).catch((error: unknown) => {
+      clearTimeout(timeout)
+      device.removeEventListener('inputreport', handler)
+      reject(error instanceof Error ? error : new Error(String(error)))
+    })
+  })
 }
 
 export interface AkkoProbeResult {
@@ -53,27 +100,49 @@ export async function connectAndProbeAkko(): Promise<AkkoProbeResult | null> {
     `VID:PID = 0x${toHex(device.vendorId, 4)}:0x${toHex(device.productId, 4)}`,
   ]
 
-  const vendorCollection = device.collections.find((c) => c.usagePage === VENDOR_USAGE_PAGE)
+  const knownModel = KNOWN_PRODUCT_IDS[device.productId]
   diagnostics.push(
-    vendorCollection
-      ? `Interface vendor 0xFFFF trouvée (usage 0x${toHex(vendorCollection.usage ?? 0)}) — cohérent avec le protocole RY5088.`
-      : "Aucune interface vendor 0xFFFF trouvée — ce périphérique n'utilise probablement pas le même protocole.",
+    knownModel
+      ? `Ce PID correspond à un modèle confirmé dans la doc communautaire : ${knownModel} — bon signe, même famille de firmware.`
+      : "Ce PID n'est dans aucune liste confirmée — famille de firmware probable mais non garantie.",
   )
 
-  try {
-    if (!device.opened) await device.open()
+  if (!device.opened) await device.open()
 
-    const report = buildFeatureReport(GET_LEDPARAM)
+  diagnostics.push(`${device.collections.length} collection(s) HID sur ce device :`)
+  for (const collection of device.collections) {
+    diagnostics.push(
+      `— usagePage 0x${toHex(collection.usagePage ?? 0, 4)} / usage 0x${toHex(collection.usage ?? 0)} — `
+        + `${describeReports('input', collection.inputReports)}, `
+        + `${describeReports('output', collection.outputReports)}, `
+        + `${describeReports('feature', collection.featureReports)}`,
+    )
+  }
+
+  const vendorCollection = device.collections.find((c) => c.usagePage === VENDOR_USAGE_PAGE)
+  if (!vendorCollection) {
+    diagnostics.push("Aucune interface vendor 0xFFFF trouvée sur ce device — protocole probablement différent.")
+    return { vendorId: device.vendorId, productId: device.productId, productName: device.productName, diagnostics }
+  }
+
+  const report = buildFeatureReport(GET_LEDPARAM)
+
+  try {
     await device.sendFeatureReport(0, report)
     const response = await device.receiveFeatureReport(0)
-
-    const bytes: number[] = []
-    for (let i = 0; i < Math.min(response.byteLength, 16); i++) bytes.push(response.getUint8(i))
-    diagnostics.push(`Réponse GET_LEDPARAM (16 premiers octets) : ${bytes.map((b) => toHex(b)).join(' ')}`)
-  } catch (error) {
+    diagnostics.push(`GET_LEDPARAM via Feature Report — réponse : ${bytesToHex(response)}`)
+  } catch (featureError) {
     diagnostics.push(
-      `Sonde GET_LEDPARAM échouée : ${error instanceof Error ? error.message : String(error)}`,
+      `GET_LEDPARAM via Feature Report a échoué (${featureError instanceof Error ? featureError.message : String(featureError)}) — essai via Output/Input report…`,
     )
+    try {
+      const response = await sendOutputReportAndWait(device, 0, report)
+      diagnostics.push(`GET_LEDPARAM via Output/Input report — réponse : ${bytesToHex(response)}`)
+    } catch (reportError) {
+      diagnostics.push(
+        `GET_LEDPARAM via Output/Input report a aussi échoué : ${reportError instanceof Error ? reportError.message : String(reportError)}`,
+      )
+    }
   }
 
   return {
