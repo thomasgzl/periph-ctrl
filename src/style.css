@@ -1,0 +1,46 @@
+@import 'tailwindcss';
+
+@theme {
+  --font-sans: 'Inter', system-ui, sans-serif;
+  --font-display: 'Space Grotesk', system-ui, sans-serif;
+
+  --color-bg: #0b0b10;
+  --color-surface: #14141c;
+  --color-surface-2: #1b1b26;
+  --color-border: #2a2a38;
+  --color-text: #d4d4de;
+  --color-text-dim: #8a8a9a;
+  --color-text-h: #f5f5fa;
+  --color-accent: #aa3bff;
+  --color-accent-2: #34e0d8;
+}
+
+html {
+  color-scheme: dark;
+}
+
+body {
+  margin: 0;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+h1,
+h2,
+h3 {
+  font-family: var(--font-display);
+  color: var(--color-text-h);
+}
+
+@layer components {
+  .glass-panel {
+    @apply rounded-2xl border border-white/10 bg-white/[0.03] backdrop-blur-sm;
+  }
+
+  .accent-ring:focus-visible {
+    @apply outline-none ring-2 ring-[var(--color-accent)] ring-offset-2 ring-offset-[var(--color-bg)];
+  }
+}
