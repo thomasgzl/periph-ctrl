@@ -8,6 +8,7 @@ import SupportBadge from '@/components/device/SupportBadge.vue'
 import { useStaggerReveal } from '@/composables/animations'
 import { CATEGORY_META } from '@/constants/categories'
 import { useDeviceStore } from '@/stores/devices'
+import { AKKO_VENDOR_ID } from '@/services/hid/webhid/akko'
 import type { DeviceCategory } from '@/services/hid'
 
 const props = defineProps<{ category: DeviceCategory }>()
@@ -89,6 +90,29 @@ const meta = computed(() => CATEGORY_META[props.category])
           <p v-for="(line, i) in device.diagnostics" :key="i" class="font-mono text-xs text-text-dim">
             {{ line }}
           </p>
+        </div>
+
+        <div
+          v-if="device.vendorId === AKKO_VENDOR_ID"
+          class="mb-4 rounded-lg border border-amber-400/20 bg-amber-400/5 p-3"
+        >
+          <p class="mb-2 text-xs text-text-dim">
+            Test d'écriture expérimental : renvoie exactement les octets lus au dernier GET_LEDPARAM — ne devrait
+            rien changer visuellement sur le clavier si l'hypothèse de format est correcte. Regarde le clavier en cliquant.
+          </p>
+          <button
+            type="button"
+            class="accent-ring rounded-lg border border-amber-400/30 px-3 py-1.5 text-xs text-amber-200 transition-colors hover:bg-amber-400/10 disabled:opacity-50"
+            :disabled="store.testingAkkoWrite"
+            @click="store.testAkkoRoundTrip()"
+          >
+            {{ store.testingAkkoWrite ? 'Envoi…' : "Tester l'écriture (renvoi à l'identique)" }}
+          </button>
+          <div v-if="store.akkoWriteTestResult?.length" class="mt-2 space-y-1">
+            <p v-for="(line, i) in store.akkoWriteTestResult" :key="i" class="font-mono text-xs text-text-dim">
+              {{ line }}
+            </p>
+          </div>
         </div>
 
         <div>

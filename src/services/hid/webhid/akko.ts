@@ -30,6 +30,13 @@ const KNOWN_PRODUCT_IDS: Record<number, string> = {
 }
 
 const GET_LEDPARAM = 0x87
+const SET_LEDPARAM = 0x07
+
+// Kept module-level (not in Pinia state) so a live HIDDevice handle never
+// gets wrapped in Vue's reactivity proxy — only plain diagnostic data goes
+// into the store.
+let activeDevice: HIDDevice | null = null
+let lastLedParamBytes: number[] | null = null
 
 function toHex(value: number, width = 2): string {
   return value.toString(16).padStart(width, '0')
@@ -140,6 +147,9 @@ export async function connectAndProbeAkko(): Promise<AkkoProbeResult | null> {
     await device.sendFeatureReport(0, report)
     const response = await device.receiveFeatureReport(0)
     diagnostics.push(`GET_LEDPARAM via Feature Report — réponse : ${bytesToHex(response)}`)
+    activeDevice = device
+    lastLedParamBytes = []
+    for (let i = 0; i < response.byteLength; i++) lastLedParamBytes.push(response.getUint8(i))
   } catch (featureError) {
     diagnostics.push(
       `GET_LEDPARAM via Feature Report a échoué (${featureError instanceof Error ? featureError.message : String(featureError)}) — essai via Output/Input report…`,
@@ -160,4 +170,42 @@ export async function connectAndProbeAkko(): Promise<AkkoProbeResult | null> {
     productName: device.productName,
     diagnostics,
   }
+}
+
+/**
+ * The safest possible first write test: mirror the last GET_LEDPARAM
+ * response back as a SET_LEDPARAM request (same params/payload bytes,
+ * opcode swapped 0x87→0x07, checksum recomputed) — this should be a no-op
+ * if our guess about the frame shape is right, since it just re-asserts
+ * whatever state the keyboard already reported. Exact SET byte semantics
+ * (which byte is which RGB channel, etc.) aren't documented anywhere we
+ * found, so anything beyond this round-trip needs visual confirmation
+ * from the user watching their actual keyboard.
+ */
+export async function testLedRoundTrip(): Promise<string[]> {
+  const diagnostics: string[] = []
+  if (!activeDevice || !lastLedParamBytes) {
+    diagnostics.push("Aucune lecture GET_LEDPARAM en mémoire — reconnecte le clavier d'abord.")
+    return diagnostics
+  }
+
+  const data = new Uint8Array(64)
+  data.set(lastLedParamBytes.slice(1, 64), 0)
+  data[0] = SET_LEDPARAM
+  let sum = 0
+  for (let i = 0; i < 6; i++) sum = (sum + data[i]) & 0xff
+  data[6] = (255 - sum) & 0xff
+
+  diagnostics.push(`Envoi SET_LEDPARAM (renvoi à l'identique) : ${Array.from(data.slice(0, 16)).map((b) => toHex(b)).join(' ')}`)
+
+  try {
+    await activeDevice.sendFeatureReport(0, data)
+    diagnostics.push('Écriture acceptée par le device (aucune erreur levée).')
+    const response = await activeDevice.receiveFeatureReport(0)
+    diagnostics.push(`Relecture après écriture : ${bytesToHex(response)}`)
+  } catch (error) {
+    diagnostics.push(`Échec de l'écriture : ${error instanceof Error ? error.message : String(error)}`)
+  }
+
+  return diagnostics
 }

@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { createAkkoKeyboardSettings } from '@/services/hid/akkoSettings'
-import { AKKO_VENDOR_ID, connectAndProbeAkko } from '@/services/hid/webhid/akko'
+import { AKKO_VENDOR_ID, connectAndProbeAkko, testLedRoundTrip } from '@/services/hid/webhid/akko'
 import { getActiveDriver, type DeviceSetting, type PeripheralDevice } from '@/services/hid'
 
 interface State {
@@ -11,6 +11,8 @@ interface State {
   lastSavedSettingId: string | null
   connectingKeyboard: boolean
   keyboardConnectError: string | null
+  testingAkkoWrite: boolean
+  akkoWriteTestResult: string[] | null
 }
 
 const driver = getActiveDriver()
@@ -28,6 +30,8 @@ export const useDeviceStore = defineStore('devices', {
     lastSavedSettingId: null,
     connectingKeyboard: false,
     keyboardConnectError: null,
+    testingAkkoWrite: false,
+    akkoWriteTestResult: null,
   }),
   getters: {
     byCategory: (state) => (category: PeripheralDevice['category']) =>
@@ -96,7 +100,7 @@ export const useDeviceStore = defineStore('devices', {
           productId: result.productId,
           supportLevel: 'unsupported',
           supportNote: isAkko
-            ? "Vendor reconnu (Akko/MonsGeek, contrôleur RY5088) mais ce PID précis n'est pas confirmé dans la doc communautaire — voir le diagnostic ci-dessous avant d'activer l'écriture."
+            ? "Vendor reconnu (Akko/MonsGeek, contrôleur RY5088), bonne interface trouvée et lecture GET_LEDPARAM confirmée — mais le format exact des commandes d'écriture (SET) reste à valider empiriquement, voir le test ci-dessous."
             : "Vendor non reconnu par Periph Ctrl — aucun pilote disponible pour ce périphérique pour l'instant.",
           diagnostics: result.diagnostics,
           settings: isAkko ? createAkkoKeyboardSettings() : [],
@@ -108,6 +112,20 @@ export const useDeviceStore = defineStore('devices', {
         this.keyboardConnectError = error instanceof Error ? error.message : String(error)
       } finally {
         this.connectingKeyboard = false
+      }
+    },
+    /**
+     * First real write test: mirrors the last GET_LEDPARAM reading back as
+     * a SET_LEDPARAM request, which should be a no-op if our guess about
+     * the frame shape holds. Purely diagnostic — doesn't touch device state
+     * in the store, since we don't yet know which bytes mean what.
+     */
+    async testAkkoRoundTrip() {
+      this.testingAkkoWrite = true
+      try {
+        this.akkoWriteTestResult = await testLedRoundTrip()
+      } finally {
+        this.testingAkkoWrite = false
       }
     },
   },
