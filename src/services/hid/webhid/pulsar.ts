@@ -13,11 +13,20 @@
  * to monkey-patch) confirms the real frame layout for this exact model.
  */
 
-import { describeCollections, toHex } from './shared'
+import { bytesToHex, describeCollections, toHex } from './shared'
 
 // 0x3710: wired Pulsar mice (X2A/X2H/Xlite v4 per community docs).
 // 0x3554: Nordic-based wireless dongle mice (X2A Wireless / X2 V2 Mini).
 export const PULSAR_VENDOR_IDS = [0x3710, 0x3554]
+
+// Found by inspecting every granted interface on the user's real Xlite V3
+// (2026-08-03): interface 1's usagePage 0xff04 / usage 0x02 collection has
+// a real Feature report (id 0x06) — matches pulsar-mouse-linux's
+// description of the X2A's config channel ("Interface 3, HID Feature
+// report"), even though this is a different VID (0x3554 nordic family).
+const CONFIG_USAGE_PAGE = 0xff04
+const CONFIG_USAGE = 0x02
+const CONFIG_FEATURE_REPORT_ID = 0x06
 
 const KNOWN_PRODUCT_IDS: Record<number, string> = {
   0x1404: 'X2A Medium Wired (confirmé par pulsar-mouse-linux)',
@@ -64,15 +73,31 @@ export async function connectAndProbePulsar(): Promise<PulsarProbeResult | null>
       : "Ce PID n'est dans aucune liste confirmée pour l'instant — protocole non vérifié pour ce modèle exact.",
   )
 
+  let configDevice: HIDDevice | undefined
   for (let i = 0; i < devices.length; i++) {
     const d = devices[i]
     if (!d.opened) await d.open()
     diagnostics.push(`--- Interface ${i} ---`)
     diagnostics.push(...describeCollections(d))
+    if (d.collections.some((c) => c.usagePage === CONFIG_USAGE_PAGE && c.usage === CONFIG_USAGE)) {
+      configDevice = d
+    }
+  }
+
+  if (configDevice) {
+    diagnostics.push('Interface de config (usagePage 0xff04 / usage 0x02) trouvée — tentative de lecture pure (aucun envoi).')
+    try {
+      const response = await configDevice.receiveFeatureReport(CONFIG_FEATURE_REPORT_ID)
+      diagnostics.push(`Lecture Feature Report 0x06 : ${bytesToHex(response)}`)
+    } catch (error) {
+      diagnostics.push(`Lecture échouée : ${error instanceof Error ? error.message : String(error)}`)
+    }
+  } else {
+    diagnostics.push("Interface de config (0xff04/0x02) non trouvée sur ce périphérique.")
   }
 
   diagnostics.push(
-    "Détection uniquement pour l'instant : aucune lecture/écriture DPI tentée tant que le protocole n'est pas confirmé pour ce PID (capture USB nécessaire, pas de configurateur web officiel chez Pulsar).",
+    "Aucune écriture DPI tentée pour l'instant tant que le protocole n'est pas confirmé pour ce PID (capture USB nécessaire, pas de configurateur web officiel chez Pulsar).",
   )
 
   return {
