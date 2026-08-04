@@ -9,6 +9,7 @@ import { useStaggerReveal } from '@/composables/animations'
 import { CATEGORY_META } from '@/constants/categories'
 import { useDeviceStore } from '@/stores/devices'
 import { AKKO_VENDOR_ID } from '@/services/hid/webhid/akko'
+import { PULSAR_VENDOR_IDS } from '@/services/hid/webhid/pulsar'
 import type { DeviceCategory } from '@/services/hid'
 
 const props = defineProps<{ category: DeviceCategory }>()
@@ -164,6 +165,30 @@ function onAkkoColorInput(event: Event) {
 
           <div v-if="store.akkoWriteTestResult?.length" class="mt-3 space-y-1">
             <p v-for="(line, i) in store.akkoWriteTestResult" :key="i" class="font-mono text-xs text-text-dim">
+              {{ line }}
+            </p>
+          </div>
+        </div>
+
+        <div
+          v-if="device.vendorId && PULSAR_VENDOR_IDS.includes(device.vendorId)"
+          class="mb-4 rounded-lg border border-amber-400/20 bg-amber-400/5 p-3"
+        >
+          <p class="mb-2 text-xs text-text-dim">
+            Essai à risque calculé (lecture seule) : structure de trame devinée à partir d'une doc communautaire
+            incomplète et pour un modèle différent du tien — peut échouer ou renvoyer n'importe quoi sans danger,
+            n'écrit jamais rien sur la souris.
+          </p>
+          <button
+            type="button"
+            class="accent-ring rounded-lg border border-amber-400/30 px-3 py-1.5 text-xs text-amber-200 transition-colors hover:bg-amber-400/10 disabled:opacity-50"
+            :disabled="store.testingPulsarRead"
+            @click="store.attemptPulsarDpiRead()"
+          >
+            {{ store.testingPulsarRead ? 'Envoi…' : 'Tenter une lecture DPI (expérimental)' }}
+          </button>
+          <div v-if="store.pulsarReadResult?.length" class="mt-2 space-y-1">
+            <p v-for="(line, i) in store.pulsarReadResult" :key="i" class="font-mono text-xs text-text-dim">
               {{ line }}
             </p>
           </div>

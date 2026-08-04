@@ -28,6 +28,10 @@ const CONFIG_USAGE_PAGE = 0xff04
 const CONFIG_USAGE = 0x02
 const CONFIG_FEATURE_REPORT_ID = 0x06
 
+// Kept module-level, like akko.ts's activeDevice, so the live HIDDevice
+// handle never gets wrapped in Vue's reactivity proxy.
+let activeConfigDevice: HIDDevice | null = null
+
 const KNOWN_PRODUCT_IDS: Record<number, string> = {
   0x1404: 'X2A Medium Wired (confirmé par pulsar-mouse-linux)',
   0x1403: 'X2H Wired Medium (confirmé par pulsar-mouse-linux)',
@@ -85,6 +89,7 @@ export async function connectAndProbePulsar(): Promise<PulsarProbeResult | null>
   }
 
   if (configDevice) {
+    activeConfigDevice = configDevice
     diagnostics.push('Interface de config (usagePage 0xff04 / usage 0x02) trouvée — tentative de lecture pure (aucun envoi).')
     try {
       const response = await configDevice.receiveFeatureReport(CONFIG_FEATURE_REPORT_ID)
@@ -106,4 +111,47 @@ export async function connectAndProbePulsar(): Promise<PulsarProbeResult | null>
     productName: device.productName,
     diagnostics,
   }
+}
+
+/**
+ * Calculated-risk read attempt using pulsar-mouse-linux's *fragmentary*
+ * description of the X2A's DPI query — "category 0x05, register
+ * 0x04(read)/0x84(write), subcommand 0x21/0x15" — with no documented exact
+ * byte offsets, and confirmed only for the wired X2A (VID 0x3710), not this
+ * nordic wireless mouse (VID 0x3554). This is a guess: category at byte 0,
+ * register at byte 1, subcommand at byte 2, checksum = 16-bit little-endian
+ * sum of bytes[0:62] at bytes[62:64] (that checksum shape *is* documented
+ * for the X2A). Read-only (register 0x04, never 0x84/write). May simply
+ * fail or return nonsense — that's expected and fine, it's read-only either
+ * way.
+ */
+export async function attemptDpiRead(): Promise<string[]> {
+  if (!activeConfigDevice) {
+    return ["Aucune souris connectée — clique d'abord \"Connecter une souris réelle\"."]
+  }
+
+  const data = new Uint8Array(64)
+  data[0] = 0x05 // category (guessed position)
+  data[1] = 0x04 // register: read
+  data[2] = 0x21 // subcommand (guessed — doc lists 0x21/0x15, meaning unclear)
+
+  let sum = 0
+  for (let i = 0; i < 62; i++) sum = (sum + data[i]) & 0xffff
+  data[62] = sum & 0xff
+  data[63] = (sum >> 8) & 0xff
+
+  const diagnostics: string[] = [
+    `Essai (non confirmé, lecture seule) : ${Array.from(data.slice(0, 16)).map((b) => toHex(b)).join(' ')}`,
+  ]
+
+  try {
+    await activeConfigDevice.sendFeatureReport(CONFIG_FEATURE_REPORT_ID, data)
+    diagnostics.push('Envoi accepté (aucune erreur levée).')
+    const response = await activeConfigDevice.receiveFeatureReport(CONFIG_FEATURE_REPORT_ID)
+    diagnostics.push(`Réponse : ${bytesToHex(response)}`)
+  } catch (error) {
+    diagnostics.push(`Échec : ${error instanceof Error ? error.message : String(error)}`)
+  }
+
+  return diagnostics
 }

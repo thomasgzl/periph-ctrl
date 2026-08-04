@@ -8,7 +8,7 @@ import {
   setAkkoLedColor,
   setAkkoRapidTrigger,
 } from '@/services/hid/webhid/akko'
-import { connectAndProbePulsar } from '@/services/hid/webhid/pulsar'
+import { attemptDpiRead, connectAndProbePulsar } from '@/services/hid/webhid/pulsar'
 import { getActiveDriver, type DeviceSetting, type PeripheralDevice } from '@/services/hid'
 
 interface State {
@@ -24,6 +24,8 @@ interface State {
   akkoRapidTrigger: boolean
   connectingMouse: boolean
   mouseConnectError: string | null
+  testingPulsarRead: boolean
+  pulsarReadResult: string[] | null
 }
 
 const driver = getActiveDriver()
@@ -46,6 +48,8 @@ export const useDeviceStore = defineStore('devices', {
     akkoRapidTrigger: true,
     connectingMouse: false,
     mouseConnectError: null,
+    testingPulsarRead: false,
+    pulsarReadResult: null,
   }),
   getters: {
     byCategory: (state) => (category: PeripheralDevice['category']) =>
@@ -196,6 +200,20 @@ export const useDeviceStore = defineStore('devices', {
         this.mouseConnectError = error instanceof Error ? error.message : String(error)
       } finally {
         this.connectingMouse = false
+      }
+    },
+    /**
+     * Calculated-risk, read-only DPI query attempt using the community doc's
+     * fragmentary (and unconfirmed for this exact VID) category/register
+     * description. Never sends the write register (0x84) — see
+     * attemptDpiRead()'s own comment for the full caveat.
+     */
+    async attemptPulsarDpiRead() {
+      this.testingPulsarRead = true
+      try {
+        this.pulsarReadResult = await attemptDpiRead()
+      } finally {
+        this.testingPulsarRead = false
       }
     },
   },
