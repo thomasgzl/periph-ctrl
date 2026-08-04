@@ -23,6 +23,8 @@ const KNOWN_PRODUCT_IDS: Record<number, string> = {
   0x1404: 'X2A Medium Wired (confirmé par pulsar-mouse-linux)',
   0x1403: 'X2H Wired Medium (confirmé par pulsar-mouse-linux)',
   0x3401: 'Xlite v4 (non testé par pulsar-mouse-linux, protocole supposé identique au X2A)',
+  0xf507: 'X2A Wireless / X2 V2 Mini (confirmé par pulsar-mouse-linux, support batterie)',
+  0xf508: 'X2A Wireless / X2 V2 Mini (confirmé par pulsar-mouse-linux, support batterie)',
 }
 
 export interface PulsarProbeResult {
