@@ -5,6 +5,7 @@ import {
   connectAndProbeAkko,
   restoreKnownTac75Lighting,
   setAkkoLedColor,
+  setAkkoRapidTrigger,
 } from '@/services/hid/webhid/akko'
 import { getActiveDriver, type DeviceSetting, type PeripheralDevice } from '@/services/hid'
 
@@ -18,6 +19,7 @@ interface State {
   keyboardConnectError: string | null
   testingAkkoWrite: boolean
   akkoWriteTestResult: string[] | null
+  akkoRapidTrigger: boolean
 }
 
 const driver = getActiveDriver()
@@ -37,6 +39,7 @@ export const useDeviceStore = defineStore('devices', {
     keyboardConnectError: null,
     testingAkkoWrite: false,
     akkoWriteTestResult: null,
+    akkoRapidTrigger: true,
   }),
   getters: {
     byCategory: (state) => (category: PeripheralDevice['category']) =>
@@ -133,6 +136,17 @@ export const useDeviceStore = defineStore('devices', {
       this.testingAkkoWrite = true
       try {
         this.akkoWriteTestResult = await restoreKnownTac75Lighting()
+      } finally {
+        this.testingAkkoWrite = false
+      }
+    },
+    /** Real Rapid Trigger on/off toggle — confirmed bytes, sensitivity value still unconfirmed. */
+    async toggleAkkoRapidTrigger() {
+      const next = !this.akkoRapidTrigger
+      this.testingAkkoWrite = true
+      try {
+        this.akkoWriteTestResult = await setAkkoRapidTrigger(next)
+        this.akkoRapidTrigger = next
       } finally {
         this.testingAkkoWrite = false
       }

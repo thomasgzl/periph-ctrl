@@ -203,8 +203,8 @@ function buildSetLedParamFrame(mode: number, p2: number, p3: number, p4: number,
   return data
 }
 
-async function sendSetLedParamFrame(device: HIDDevice, data: Uint8Array): Promise<string[]> {
-  const diagnostics: string[] = [`Envoi SET_LEDPARAM : ${Array.from(data.slice(0, 16)).map((b) => toHex(b)).join(' ')}`]
+async function sendConfigFrame(device: HIDDevice, data: Uint8Array): Promise<string[]> {
+  const diagnostics: string[] = [`Envoi : ${Array.from(data.slice(0, 16)).map((b) => toHex(b)).join(' ')}`]
   try {
     await device.sendFeatureReport(0, data)
     diagnostics.push('Écriture acceptée par le device (aucune erreur levée).')
@@ -237,7 +237,7 @@ export async function setAkkoLedColor(hex: string): Promise<string[]> {
   const p3 = lastLedParamBytes?.[3] ?? 0x04
   const p4 = lastLedParamBytes?.[4] ?? 0x08
   const data = buildSetLedParamFrame(mode, p2, p3, p4, r, g, b)
-  return sendSetLedParamFrame(activeDevice, data)
+  return sendConfigFrame(activeDevice, data)
 }
 
 // Bytes from the very first successful GET_LEDPARAM read on this exact
@@ -253,5 +253,51 @@ export async function restoreKnownTac75Lighting(): Promise<string[]> {
   }
   const { mode, p2, p3, p4, r, g, b } = KNOWN_TAC75_LEDPARAM_BEFORE_BUG
   const data = buildSetLedParamFrame(mode, p2, p3, p4, r, g, b)
-  return sendSetLedParamFrame(activeDevice, data)
+  return sendConfigFrame(activeDevice, data)
+}
+
+/**
+ * SET_MULTI_MAGNETISM (0x65) frame, confirmed the same way as SET_LEDPARAM:
+ * captured Akko's own app toggling Rapid Trigger on/off and setting its
+ * sensitivity on the ESC key.
+ *
+ *   [0]=0x65 [1]=subcmd (0x07=RT enable, 0x02=RT_PRESS, 0x03=RT_LIFT)
+ *   [2..3]=0 [4]=on/off flag for the 0x07 subcmd (0=on, 1=off) [5..6]=0
+ *   [7]=checksum = 255-(sum(bytes[0..6]) mod 256)
+ *   [8..9]=16-bit little-endian value (RT sensitivity for 0x02/0x03; seen
+ *   as 0x0028 default / 0x01c6 at max slider — unit/scale not confirmed,
+ *   0 when RT is off)
+ *
+ * No per-key index byte was found in any capture, so this looks like a
+ * *global* setting despite being tested via the ESC key's row in Akko's UI
+ * — not confirmed either way, flagged here rather than assumed silently.
+ */
+const SET_MAGNETISM = 0x65
+const RT_ENABLE_SUBCMD = 0x07
+// Sensitivity value observed for the keyboard's own default when RT is on;
+// used when re-enabling since we don't have a confirmed GET for this.
+const RT_DEFAULT_SENSITIVITY = 0x0028
+
+function buildMagnetismFrame(subcmd: number, flag: number, value: number): Uint8Array {
+  const data = new Uint8Array(64)
+  data[0] = SET_MAGNETISM
+  data[1] = subcmd
+  data[4] = flag
+  let sum = 0
+  for (let i = 0; i < 7; i++) sum = (sum + data[i]) & 0xff
+  data[7] = (255 - sum) & 0xff
+  data[8] = value & 0xff
+  data[9] = (value >> 8) & 0xff
+  return data
+}
+
+/** Real Rapid Trigger on/off toggle — the value/sensitivity part of this command is still unconfirmed. */
+export async function setAkkoRapidTrigger(enabled: boolean): Promise<string[]> {
+  if (!activeDevice) {
+    return ["Aucun clavier connecté — clique d'abord \"Connecter un clavier réel\"."]
+  }
+  const flag = enabled ? 0 : 1
+  const value = enabled ? RT_DEFAULT_SENSITIVITY : 0
+  const data = buildMagnetismFrame(RT_ENABLE_SUBCMD, flag, value)
+  return sendConfigFrame(activeDevice, data)
 }

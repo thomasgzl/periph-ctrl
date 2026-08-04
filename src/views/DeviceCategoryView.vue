@@ -121,7 +121,30 @@ function onAkkoColorInput(event: Event) {
               {{ store.testingAkkoWrite ? 'Envoi…' : "Restaurer l'éclairage d'origine" }}
             </button>
           </div>
-          <div v-if="store.akkoWriteTestResult?.length" class="mt-2 space-y-1">
+
+          <div class="mt-3 flex items-center justify-between gap-3 border-t border-white/10 pt-3">
+            <div>
+              <p class="text-xs font-medium text-text-h">Rapid Trigger</p>
+              <p class="text-xs text-text-dim">
+                Marche/arrêt confirmé et fonctionnel. Sensibilité gardée à la valeur par défaut du clavier (le
+                format exact de cette valeur n'est pas encore confirmé).
+              </p>
+            </div>
+            <button
+              type="button"
+              class="accent-ring flex w-11 shrink-0 items-center rounded-full p-0.5 transition-colors disabled:opacity-50"
+              :class="store.akkoRapidTrigger ? 'bg-accent' : 'bg-white/10'"
+              :disabled="store.testingAkkoWrite"
+              @click="store.toggleAkkoRapidTrigger()"
+            >
+              <span
+                class="size-4 rounded-full bg-white transition-transform"
+                :class="store.akkoRapidTrigger ? 'translate-x-5' : 'translate-x-0'"
+              />
+            </button>
+          </div>
+
+          <div v-if="store.akkoWriteTestResult?.length" class="mt-3 space-y-1">
             <p v-for="(line, i) in store.akkoWriteTestResult" :key="i" class="font-mono text-xs text-text-dim">
               {{ line }}
             </p>
