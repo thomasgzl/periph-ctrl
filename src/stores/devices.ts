@@ -4,7 +4,7 @@ import {
   AKKO_VENDOR_ID,
   connectAndProbeAkko,
   restoreKnownTac75Lighting,
-  testLedRoundTrip,
+  setAkkoLedColor,
 } from '@/services/hid/webhid/akko'
 import { getActiveDriver, type DeviceSetting, type PeripheralDevice } from '@/services/hid'
 
@@ -105,7 +105,7 @@ export const useDeviceStore = defineStore('devices', {
           productId: result.productId,
           supportLevel: 'unsupported',
           supportNote: isAkko
-            ? "Vendor reconnu (Akko/MonsGeek, contrôleur RY5088), bonne interface trouvée et lecture GET_LEDPARAM confirmée — mais le format exact des commandes d'écriture (SET) reste à valider empiriquement, voir le test ci-dessous."
+            ? "Vendor reconnu (Akko/MonsGeek, contrôleur RY5088). Écriture de la couleur RGB confirmée et fonctionnelle (voir ci-dessous) ; point d'activation, Rapid Trigger et taux de rafraîchissement restent non confirmés en écriture, d'où les réglages désactivés plus bas."
             : "Vendor non reconnu par Periph Ctrl — aucun pilote disponible pour ce périphérique pour l'instant.",
           diagnostics: result.diagnostics,
           settings: isAkko ? createAkkoKeyboardSettings() : [],
@@ -119,21 +119,16 @@ export const useDeviceStore = defineStore('devices', {
         this.connectingKeyboard = false
       }
     },
-    /**
-     * First real write test: mirrors the last GET_LEDPARAM reading back as
-     * a SET_LEDPARAM request, which should be a no-op if our guess about
-     * the frame shape holds. Purely diagnostic — doesn't touch device state
-     * in the store, since we don't yet know which bytes mean what.
-     */
-    async testAkkoRoundTrip() {
+    /** Real, confirmed color write — frame layout captured from Akko's own official app. */
+    async setAkkoColor(hex: string) {
       this.testingAkkoWrite = true
       try {
-        this.akkoWriteTestResult = await testLedRoundTrip()
+        this.akkoWriteTestResult = await setAkkoLedColor(hex)
       } finally {
         this.testingAkkoWrite = false
       }
     },
-    /** Recovery from the shift-bug that turned the RGB off during the first write test. */
+    /** Recovery from an earlier shift-bug that turned the RGB off during a write test. */
     async restoreAkkoLighting() {
       this.testingAkkoWrite = true
       try {

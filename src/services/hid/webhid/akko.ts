@@ -173,34 +173,38 @@ export async function connectAndProbeAkko(): Promise<AkkoProbeResult | null> {
 }
 
 /**
- * The safest possible first write test: mirror the last GET_LEDPARAM
- * response back as a SET_LEDPARAM request (same params/payload bytes,
- * opcode swapped 0x87→0x07, checksum recomputed) — this should be a no-op
- * if our guess about the frame shape is right, since it just re-asserts
- * whatever state the keyboard already reported. Exact SET byte semantics
- * (which byte is which RGB channel, etc.) aren't documented anywhere we
- * found, so anything beyond this round-trip needs visual confirmation
- * from the user watching their actual keyboard.
+ * Real SET_LEDPARAM frame layout, confirmed by capturing Akko's own official
+ * web app's actual WebHID traffic (monkey-patching HIDDevice.prototype in
+ * DevTools while the user changed color red→green):
+ *
+ *   [0]=0x07 (opcode) [1]=mode [2..4]=3 fixed params [5..7]=R,G,B
+ *   [8]=checksum = 255 - (sum(bytes[0..7]) mod 256)
+ *
+ * This is NOT the same shape as the generic 6-byte/checksum-at-6 guess from
+ * the monsgeek-akko-linux docs (that one only held for GET_LEDPARAM, which
+ * carries no real params) — SET carries 8 meaningful bytes, so its checksum
+ * sits right after them, at offset 8. Confirmed against 3 real colors: pure
+ * red (255,0,0), pure blue-ish (0,64,255), and this pure green (0,255,17)
+ * capture all landed exactly at positions 5,6,7 with a matching checksum.
  */
-async function sendSetLedParam(device: HIDDevice, sourceBytes: number[]): Promise<string[]> {
-  const diagnostics: string[] = []
-
-  // In-place opcode swap only: keep every byte at its original position
-  // (positions 1..63 untouched, including the payload past the checksum),
-  // just replace the leading opcode and recompute the checksum over
-  // [cmd, ...5 params]. A previous version of this function shifted the
-  // whole buffer left by one instead, which silently corrupted the mode
-  // byte and clobbered a payload byte with the checksum — that's what
-  // turned the RGB off during the first test.
+function buildSetLedParamFrame(mode: number, p2: number, p3: number, p4: number, r: number, g: number, b: number): Uint8Array {
   const data = new Uint8Array(64)
-  data.set(sourceBytes.slice(0, 64), 0)
   data[0] = SET_LEDPARAM
+  data[1] = mode
+  data[2] = p2
+  data[3] = p3
+  data[4] = p4
+  data[5] = r
+  data[6] = g
+  data[7] = b
   let sum = 0
-  for (let i = 0; i < 6; i++) sum = (sum + data[i]) & 0xff
-  data[6] = (255 - sum) & 0xff
+  for (let i = 0; i < 8; i++) sum = (sum + data[i]) & 0xff
+  data[8] = (255 - sum) & 0xff
+  return data
+}
 
-  diagnostics.push(`Envoi SET_LEDPARAM : ${Array.from(data.slice(0, 16)).map((b) => toHex(b)).join(' ')}`)
-
+async function sendSetLedParamFrame(device: HIDDevice, data: Uint8Array): Promise<string[]> {
+  const diagnostics: string[] = [`Envoi SET_LEDPARAM : ${Array.from(data.slice(0, 16)).map((b) => toHex(b)).join(' ')}`]
   try {
     await device.sendFeatureReport(0, data)
     diagnostics.push('Écriture acceptée par le device (aucune erreur levée).')
@@ -209,34 +213,45 @@ async function sendSetLedParam(device: HIDDevice, sourceBytes: number[]): Promis
   } catch (error) {
     diagnostics.push(`Échec de l'écriture : ${error instanceof Error ? error.message : String(error)}`)
   }
-
   return diagnostics
 }
 
+/** #rrggbb -> [r,g,b] */
+function parseHexColor(hex: string): [number, number, number] {
+  const clean = hex.replace('#', '')
+  return [parseInt(clean.slice(0, 2), 16), parseInt(clean.slice(2, 4), 16), parseInt(clean.slice(4, 6), 16)]
+}
+
 /**
- * Mirrors the last GET_LEDPARAM response back as a SET_LEDPARAM request
- * (opcode swapped, every other byte — including payload — left exactly as
- * read). Should be a visual no-op if the frame-shape guess holds.
+ * Sets a real color on the keyboard (static effect), using the confirmed
+ * frame layout. Keeps whatever mode/param2-4 were last read so we don't
+ * touch effect/speed/brightness — only the color channels change.
  */
-export async function testLedRoundTrip(): Promise<string[]> {
-  if (!activeDevice || !lastLedParamBytes) {
-    return ["Aucune lecture GET_LEDPARAM en mémoire — reconnecte le clavier d'abord."]
+export async function setAkkoLedColor(hex: string): Promise<string[]> {
+  if (!activeDevice) {
+    return ["Aucun clavier connecté — clique d'abord \"Connecter un clavier réel\"."]
   }
-  return sendSetLedParam(activeDevice, lastLedParamBytes)
+  const [r, g, b] = parseHexColor(hex)
+  const mode = lastLedParamBytes?.[1] ?? 0x01
+  const p2 = lastLedParamBytes?.[2] ?? 0x04
+  const p3 = lastLedParamBytes?.[3] ?? 0x04
+  const p4 = lastLedParamBytes?.[4] ?? 0x08
+  const data = buildSetLedParamFrame(mode, p2, p3, p4, r, g, b)
+  return sendSetLedParamFrame(activeDevice, data)
 }
 
 // Bytes from the very first successful GET_LEDPARAM read on this exact
-// keyboard (2026-08-03), before the shift-bug test corrupted its state —
+// keyboard (2026-08-03), before an earlier buggy test corrupted its state —
 // hardcoded so we can restore it even after a page reload wipes the
-// in-memory `lastLedParamBytes`.
-const KNOWN_TAC75_LEDPARAM_BEFORE_BUG = [
-  0x87, 0x02, 0x01, 0x04, 0x08, 0x80, 0x00, 0xff, 0, 0, 0, 0, 0, 0, 0, 0,
-]
+// in-memory `lastLedParamBytes`. Response shape: [echo, mode, p2, p3, p4, R, G, B].
+const KNOWN_TAC75_LEDPARAM_BEFORE_BUG = { mode: 0x02, p2: 0x01, p3: 0x04, p4: 0x08, r: 0x80, g: 0x00, b: 0xff }
 
 /** One-off recovery: restores the exact lighting state read before the round-trip bug. */
 export async function restoreKnownTac75Lighting(): Promise<string[]> {
   if (!activeDevice) {
     return ["Aucun clavier connecté — clique d'abord \"Connecter un clavier réel\"."]
   }
-  return sendSetLedParam(activeDevice, KNOWN_TAC75_LEDPARAM_BEFORE_BUG)
+  const { mode, p2, p3, p4, r, g, b } = KNOWN_TAC75_LEDPARAM_BEFORE_BUG
+  const data = buildSetLedParamFrame(mode, p2, p3, p4, r, g, b)
+  return sendSetLedParamFrame(activeDevice, data)
 }

@@ -24,6 +24,10 @@ useStaggerReveal(list, '.device-panel')
 
 const devices = computed(() => store.byCategory(props.category))
 const meta = computed(() => CATEGORY_META[props.category])
+
+function onAkkoColorInput(event: Event) {
+  store.setAkkoColor((event.target as HTMLInputElement).value)
+}
 </script>
 
 <template>
@@ -94,28 +98,27 @@ const meta = computed(() => CATEGORY_META[props.category])
 
         <div
           v-if="device.vendorId === AKKO_VENDOR_ID"
-          class="mb-4 rounded-lg border border-amber-400/20 bg-amber-400/5 p-3"
+          class="mb-4 rounded-lg border border-emerald-400/20 bg-emerald-400/5 p-3"
         >
           <p class="mb-2 text-xs text-text-dim">
-            Un bug dans le test précédent a coupé le RGB (décalage d'octet dans la reconstruction de la trame,
-            corrigé). Restaure l'état d'origine lu au tout premier GET_LEDPARAM, ou relance un test d'écriture propre.
+            Écriture RGB confirmée — format de trame capturé depuis l'app officielle d'Akko. Choisis une couleur,
+            elle est envoyée directement au clavier (effet statique, luminosité/vitesse inchangées).
           </p>
-          <div class="flex flex-wrap gap-2">
+          <div class="flex flex-wrap items-center gap-2">
+            <input
+              type="color"
+              class="accent-ring size-9 cursor-pointer rounded-lg border border-white/10 bg-transparent p-0"
+              value="#ff0000"
+              :disabled="store.testingAkkoWrite"
+              @input="onAkkoColorInput"
+            />
             <button
               type="button"
-              class="accent-ring rounded-lg border border-emerald-400/30 px-3 py-1.5 text-xs text-emerald-200 transition-colors hover:bg-emerald-400/10 disabled:opacity-50"
+              class="accent-ring rounded-lg border border-white/10 px-3 py-1.5 text-xs text-text-dim transition-colors hover:border-accent/40 disabled:opacity-50"
               :disabled="store.testingAkkoWrite"
               @click="store.restoreAkkoLighting()"
             >
               {{ store.testingAkkoWrite ? 'Envoi…' : "Restaurer l'éclairage d'origine" }}
-            </button>
-            <button
-              type="button"
-              class="accent-ring rounded-lg border border-amber-400/30 px-3 py-1.5 text-xs text-amber-200 transition-colors hover:bg-amber-400/10 disabled:opacity-50"
-              :disabled="store.testingAkkoWrite"
-              @click="store.testAkkoRoundTrip()"
-            >
-              {{ store.testingAkkoWrite ? 'Envoi…' : "Tester l'écriture (renvoi à l'identique, corrigé)" }}
             </button>
           </div>
           <div v-if="store.akkoWriteTestResult?.length" class="mt-2 space-y-1">
