@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { createAkkoKeyboardSettings } from '@/services/hid/akkoSettings'
+import { createPulsarMouseSettings } from '@/services/hid/pulsarSettings'
 import {
   AKKO_VENDOR_ID,
   connectAndProbeAkko,
@@ -7,6 +8,7 @@ import {
   setAkkoLedColor,
   setAkkoRapidTrigger,
 } from '@/services/hid/webhid/akko'
+import { connectAndProbePulsar } from '@/services/hid/webhid/pulsar'
 import { getActiveDriver, type DeviceSetting, type PeripheralDevice } from '@/services/hid'
 
 interface State {
@@ -20,6 +22,8 @@ interface State {
   testingAkkoWrite: boolean
   akkoWriteTestResult: string[] | null
   akkoRapidTrigger: boolean
+  connectingMouse: boolean
+  mouseConnectError: string | null
 }
 
 const driver = getActiveDriver()
@@ -40,6 +44,8 @@ export const useDeviceStore = defineStore('devices', {
     testingAkkoWrite: false,
     akkoWriteTestResult: null,
     akkoRapidTrigger: true,
+    connectingMouse: false,
+    mouseConnectError: null,
   }),
   getters: {
     byCategory: (state) => (category: PeripheralDevice['category']) =>
@@ -149,6 +155,47 @@ export const useDeviceStore = defineStore('devices', {
         this.akkoRapidTrigger = next
       } finally {
         this.testingAkkoWrite = false
+      }
+    },
+    /**
+     * Opens the real browser HID device picker for Pulsar mice. Detection +
+     * interface introspection only — no protocol confirmed yet for the
+     * user's exact model, so no read/write is attempted.
+     */
+    async connectMouse() {
+      if (!('hid' in navigator)) {
+        this.mouseConnectError = 'WebHID indisponible : utilise Chrome ou Edge sur ordinateur.'
+        return
+      }
+
+      this.connectingMouse = true
+      this.mouseConnectError = null
+      try {
+        const result = await connectAndProbePulsar()
+        if (!result) return // user cancelled the device picker
+
+        const device: PeripheralDevice = {
+          id: `mouse-real-${result.vendorId}-${result.productId}`,
+          name: result.productName || 'Souris détectée',
+          brand: 'Pulsar',
+          category: 'mouse',
+          connection: 'wireless',
+          connected: true,
+          vendorId: result.vendorId,
+          productId: result.productId,
+          supportLevel: 'unsupported',
+          supportNote:
+            "Vendor Pulsar détecté. Contrairement à Akko, Pulsar n'a pas de configurateur web officiel à observer, donc le protocole exact n'est pas encore confirmé pour ce modèle — aucune lecture/écriture DPI tentée pour l'instant.",
+          diagnostics: result.diagnostics,
+          settings: createPulsarMouseSettings(),
+        }
+
+        this.devices = [...this.devices.filter((d) => d.category !== 'mouse'), device]
+        this.hasScanned = true
+      } catch (error) {
+        this.mouseConnectError = error instanceof Error ? error.message : String(error)
+      } finally {
+        this.connectingMouse = false
       }
     },
   },

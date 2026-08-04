@@ -13,6 +13,8 @@
  * all, hence the earlier "Failed to write" errors).
  */
 
+import { bytesToHex, describeCollections, sendOutputReportAndWait, toHex } from './shared'
+
 export const AKKO_VENDOR_ID = 0x3151
 const CONFIG_USAGE_PAGE = 0xffff
 const CONFIG_USAGE = 0x02
@@ -38,10 +40,6 @@ const SET_LEDPARAM = 0x07
 let activeDevice: HIDDevice | null = null
 let lastLedParamBytes: number[] | null = null
 
-function toHex(value: number, width = 2): string {
-  return value.toString(16).padStart(width, '0')
-}
-
 function buildFeatureReport(cmd: number, params: number[] = []): Uint8Array {
   const data = new Uint8Array(64)
   data[0] = cmd
@@ -50,41 +48,6 @@ function buildFeatureReport(cmd: number, params: number[] = []): Uint8Array {
   for (let i = 0; i < 6; i++) sum = (sum + data[i]) & 0xff
   data[6] = (255 - sum) & 0xff
   return data
-}
-
-function describeReports(label: string, reports?: HIDReportItem[]): string {
-  if (!reports || reports.length === 0) return `${label}: aucun`
-  const ids = reports.map((r) => `0x${toHex(r.reportId ?? 0)}`).join(', ')
-  return `${label}: ${ids}`
-}
-
-function bytesToHex(view: DataView, max = 16): string {
-  const bytes: string[] = []
-  for (let i = 0; i < Math.min(view.byteLength, max); i++) bytes.push(toHex(view.getUint8(i)))
-  return bytes.join(' ')
-}
-
-/** Waits for one 'inputreport' event after sending an output report, with a timeout. */
-function sendOutputReportAndWait(device: HIDDevice, reportId: number, data: Uint8Array, timeoutMs = 800): Promise<DataView> {
-  return new Promise((resolve, reject) => {
-    const timeout = setTimeout(() => {
-      device.removeEventListener('inputreport', handler)
-      reject(new Error(`Timeout (${timeoutMs}ms) : aucun input report reçu en retour`))
-    }, timeoutMs)
-
-    function handler(event: HIDInputReportEvent) {
-      clearTimeout(timeout)
-      device.removeEventListener('inputreport', handler)
-      resolve(event.data)
-    }
-
-    device.addEventListener('inputreport', handler)
-    device.sendReport(reportId, data).catch((error: unknown) => {
-      clearTimeout(timeout)
-      device.removeEventListener('inputreport', handler)
-      reject(error instanceof Error ? error : new Error(String(error)))
-    })
-  })
 }
 
 export interface AkkoProbeResult {
@@ -120,15 +83,7 @@ export async function connectAndProbeAkko(): Promise<AkkoProbeResult | null> {
 
   if (!device.opened) await device.open()
 
-  diagnostics.push(`${device.collections.length} collection(s) HID sur ce device :`)
-  for (const collection of device.collections) {
-    diagnostics.push(
-      `— usagePage 0x${toHex(collection.usagePage ?? 0, 4)} / usage 0x${toHex(collection.usage ?? 0)} — `
-        + `${describeReports('input', collection.inputReports)}, `
-        + `${describeReports('output', collection.outputReports)}, `
-        + `${describeReports('feature', collection.featureReports)}`,
-    )
-  }
+  diagnostics.push(...describeCollections(device))
 
   const configCollection = device.collections.find(
     (c) => c.usagePage === CONFIG_USAGE_PAGE && c.usage === CONFIG_USAGE,

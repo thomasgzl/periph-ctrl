@@ -1,4 +1,5 @@
 import { createAkkoKeyboardSettings } from './akkoSettings'
+import { createPulsarMouseSettings } from './pulsarSettings'
 import type { DeviceDriver, PeripheralDevice } from './types'
 
 function clone(devices: PeripheralDevice[]): PeripheralDevice[] {
@@ -17,31 +18,7 @@ const template: PeripheralDevice[] = [
     supportLevel: 'unsupported',
     supportNote:
       "Le protocole HID de la Xlite V3 n'est pas encore confirmé publiquement (pulsar-mouse-linux couvre X2A/X2H/Xlite v4, pas ce modèle) — capture USB nécessaire avant d'écrire dessus.",
-    settings: [
-      { id: 'dpi', kind: 'range', label: 'Sensibilité (DPI)', min: 100, max: 26000, step: 50, value: 1600 },
-      {
-        id: 'polling',
-        kind: 'enum',
-        label: 'Taux de rafraîchissement',
-        value: '1000',
-        options: [
-          { value: '125', label: '125 Hz' },
-          { value: '500', label: '500 Hz' },
-          { value: '1000', label: '1000 Hz' },
-          { value: '2000', label: '2000 Hz' },
-        ],
-      },
-      {
-        id: 'liftoff',
-        kind: 'enum',
-        label: 'Distance de décollage',
-        value: 'low',
-        options: [
-          { value: 'low', label: 'Basse (~1mm)' },
-          { value: 'mid', label: 'Moyenne (~2mm)' },
-        ],
-      },
-    ],
+    settings: createPulsarMouseSettings(),
   },
   {
     id: 'keyboard-tac75-he',
