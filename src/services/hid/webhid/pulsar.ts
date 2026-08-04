@@ -47,8 +47,14 @@ export async function connectAndProbePulsar(): Promise<PulsarProbeResult | null>
   const device = devices[0]
   if (!device) return null
 
+  // A single picker selection can grant access to *every* HID interface of
+  // that physical device at once — requestDevice() then resolves with one
+  // HIDDevice entry per interface, not just one. Only inspecting devices[0]
+  // meant we could easily miss a separate vendor config interface sitting
+  // right next to the protected standard-mouse one. Report on all of them.
   const diagnostics: string[] = [
     `VID:PID = 0x${toHex(device.vendorId, 4)}:0x${toHex(device.productId, 4)}`,
+    `${devices.length} interface(s) HID accordée(s) pour ce périphérique.`,
   ]
 
   const knownModel = KNOWN_PRODUCT_IDS[device.productId]
@@ -58,9 +64,13 @@ export async function connectAndProbePulsar(): Promise<PulsarProbeResult | null>
       : "Ce PID n'est dans aucune liste confirmée pour l'instant — protocole non vérifié pour ce modèle exact.",
   )
 
-  if (!device.opened) await device.open()
+  for (let i = 0; i < devices.length; i++) {
+    const d = devices[i]
+    if (!d.opened) await d.open()
+    diagnostics.push(`--- Interface ${i} ---`)
+    diagnostics.push(...describeCollections(d))
+  }
 
-  diagnostics.push(...describeCollections(device))
   diagnostics.push(
     "Détection uniquement pour l'instant : aucune lecture/écriture DPI tentée tant que le protocole n'est pas confirmé pour ce PID (capture USB nécessaire, pas de configurateur web officiel chez Pulsar).",
   )
